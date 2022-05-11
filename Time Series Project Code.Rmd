@@ -1,0 +1,101 @@
+---
+title: "Time Series Project Code"
+author: "Christopher Halim"
+date: "4/28/2022"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Exploratory Data Analysis 
+```{r}
+library(lubridate)
+library(zoo)
+library(dplyr)
+library(tidyverse)
+library(reshape2)
+library(forecast)
+library(knitr)
+library(data.table)
+library(ggplot2)
+
+
+# Modify the data to get monthly average
+data <- read.csv("/Users/christopherhalim888/Downloads/WindSpeed_Month_Ave.csv")
+head(data)
+data$date <- as.yearmon(paste(data$year, data$month), "%Y %m")
+data$avg <- rowMeans(data[ , c(3,918)], na.rm=TRUE)
+df <- subset(data,select = -c(1,2:918))
+head(df)
+
+# Modified Data Summary
+summary(df$avg)
+
+# Get the average windspeed per year
+setDT(df)
+n <- 12 # every 13 rows
+x <- df[, mean(avg), by= (seq(nrow(df)) - 1) %/% n]
+x$seq <- replace(x$seq,x$seq >= 0,seq(1979,2018,1))
+x
+
+# Convert the data into time series object
+ts_r <- as.ts(read.zoo(df, FUN = as.yearmon))
+is.ts(ts_r)
+
+# Analyze the time series object
+start(ts_r)
+end(ts_r)
+frequency(ts_r)
+
+# Plot the time series data
+ts.plot(ts_r, xlab="Year", ylab="Wind Speed Average", main="Monthly Wind Speed Average, 1979-2018")
+abline(reg=lm(ts_r~time(ts_r)))
+
+# Get ACF and PACF from the data
+acf(ts_r)
+pacf(ts_r)
+
+# Decomposition plot from the time series data
+components.ts = decompose(ts_r)
+plot(components.ts)
+```
+
+AR Model Analysis
+```{r}
+# Define Autocorrelation to help determine the type of series we have
+acf(ts_r)
+
+# Fit the Auto AR model to find the best model
+model <- auto.arima(ts_r) # best model
+summary(model)
+arimaorder(model)
+autoPred = forecast(model, h=25)
+plot(autoPred,xlab = "Year", ylab = "Average Windspeed Forecast")
+
+AR <- arima(ts_r, c(1,0,0), seasonal = list(order = c(1,1,0), period = 12))
+print(AR)
+
+# Plot the time series data along with fitted values
+ts.plot(ts_r,main = "Time Series Along with Fitted Values", xlab = "Year")
+AR_fit <- ts_r - residuals(AR)
+points(AR_fit, type = "l", col = 2, lty = 2)
+
+plot(fitted(AR), residuals(AR),main = "Fitted vs. Residuals", xlab = "Fitted Value",ylab = "Residuals Value")
+
+# 12 months forecast by using the AR model created above
+tab <- data.frame(predict(AR, n.ahead = 12))
+tab$pred
+tab$se
+
+# Plot the Wind Speed  plus the forecast and 95% prediction intervals
+ts.plot(ts_r, xlim = c(1979, 2018))
+AR_forecast <- predict(AR, n.ahead = 12)$pred
+AR_forecast_se <- predict(AR, n.ahead = 12)$se
+points(AR_forecast, type = "l", col = 2)
+points(AR_forecast - 2*AR_forecast_se, type = "l", col = 2, lty = 2)
+points(AR_forecast + 2*AR_forecast_se, type = "l", col = 2, lty = 2)
+```
+
+
